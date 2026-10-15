@@ -53,9 +53,11 @@ button:disabled{opacity:.5;cursor:default}
 .sys{align-self:center;font-size:13px;color:var(--sub);text-align:center}
 .modal{display:none;position:fixed;inset:0;background:rgba(18,21,28,.6);align-items:center;justify-content:center;padding:16px}
 .modal.on{display:flex}
+#buy-modal{z-index:2}
 .modal .card{max-width:420px;width:100%;margin:0}
-.passes{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0;max-height:140px;overflow-y:auto}
-.pass{font-family:ui-monospace,Menlo,monospace;font-size:12px;border:1px dashed var(--accent);color:var(--accent);padding:2px 6px;border-radius:6px}
+textarea{font:14px/1.5 ui-monospace,Menlo,monospace;width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);resize:vertical}
+pre.codes{font:14px/1.7 ui-monospace,Menlo,monospace;margin:10px 0;padding:12px;border:1px dashed var(--accent);border-radius:10px;background:#fff;color:var(--accent);white-space:pre-wrap;user-select:all}
+.error{color:#9A3F12;font-size:14px;min-height:1.5em;margin:8px 0}
 footer{max-width:560px;margin:0 auto;padding:0 16px 32px;color:var(--sub);font-size:13px}
 </style>
 </head>
@@ -64,7 +66,7 @@ footer{max-width:560px;margin:0 auto;padding:0 16px 32px;color:var(--sub);font-s
   <svg width="30" height="30" viewBox="0 0 120 120" aria-hidden="true"><path d="M88 108H32a20 20 0 0 1-20-20V32a20 20 0 0 1 20-20h56a20 20 0 0 1 20 20v40" fill="none" stroke="#F4F2EE" stroke-width="8" stroke-linecap="round"/><circle cx="46" cy="60" r="10" fill="#F4F2EE"/><circle cx="74" cy="60" r="10" fill="#5FB39C"/></svg>
   <span class="brand">OneRoom</span>
   <span class="spacer"></span>
-  <button class="pill small" id="wallet-btn">Passes: <span id="pass-count">0</span></button>
+  <button class="pill small" id="buy-btn">Buy passes</button>
 </header>
 
 <main>
@@ -103,7 +105,7 @@ footer{max-width:560px;margin:0 auto;padding:0 16px 32px;color:var(--sub);font-s
   <section class="screen" id="screen-setup">
     <div class="card">
       <h2><span id="setup-name"></span> accepted!</h2>
-      <p class="muted">Choose how long the room stays open. 1 pass = 10 minutes.</p>
+      <p class="muted">Choose how long the room stays open. 1 pass code = 10 minutes.</p>
       <div class="choices" id="durations">
         <label><input type="radio" name="dur" value="10" checked><span>10 min</span></label>
         <label><input type="radio" name="dur" value="20"><span>20 min</span></label>
@@ -140,7 +142,7 @@ footer{max-width:560px;margin:0 auto;padding:0 16px 32px;color:var(--sub);font-s
   </section>
 </main>
 
-<footer>Demo: passes are free here and stay on this device. Messages and files travel directly between the two browsers.</footer>
+<footer>Demo: pass codes are free here and shown only once, so save them. Messages and files travel directly between the two browsers.</footer>
 
 <div class="modal" id="incoming-modal" role="dialog" aria-modal="true" aria-labelledby="incoming-title">
   <div class="card">
@@ -150,18 +152,33 @@ footer{max-width:560px;margin:0 auto;padding:0 16px 32px;color:var(--sub);font-s
   </div>
 </div>
 
-<div class="modal" id="wallet-modal" role="dialog" aria-modal="true" aria-labelledby="wallet-title">
+<div class="modal" id="buy-modal" role="dialog" aria-modal="true" aria-labelledby="buy-title">
   <div class="card">
-    <h2 id="wallet-title">My passes</h2>
-    <p class="muted">Stored on this device only. They stay when you leave.</p>
-    <div class="passes" id="pass-list"></div>
-    <p class="muted">Demo purchase (no real payment):</p>
+    <h2 id="buy-title">Buy passes</h2>
+    <p class="muted">Demo purchase, no real payment. You get one code per 10 minutes.</p>
     <div class="row">
       <button class="small" data-buy="10">10 min · ₩1,000</button>
       <button class="small" data-buy="30">30 min · ₩2,500</button>
       <button class="small" data-buy="60">60 min · ₩4,000</button>
     </div>
-    <button style="width:100%;margin-top:14px" id="wallet-close">Close</button>
+    <div id="bought" hidden>
+      <p style="margin:14px 0 0"><b>Your codes. Save them now.</b></p>
+      <p class="muted" style="margin:0">We don’t keep a copy. Like cash, whoever has a code can use it.</p>
+      <pre class="codes" id="bought-codes"></pre>
+      <button class="small" id="copy-codes">Copy all codes</button>
+    </div>
+    <button style="width:100%;margin-top:14px" id="buy-close">Close</button>
+  </div>
+</div>
+
+<div class="modal" id="code-modal" role="dialog" aria-modal="true" aria-labelledby="code-title">
+  <div class="card">
+    <h2 id="code-title">Enter pass codes</h2>
+    <p class="muted" id="code-help"></p>
+    <label class="muted" for="code-input">Paste your codes (one or more)</label>
+    <textarea id="code-input" rows="3" placeholder="PASS-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false"></textarea>
+    <p class="error" id="code-error" role="alert"></p>
+    <div class="row"><button class="primary" id="code-ok">Use codes</button><button id="code-cancel">Cancel</button><button class="small" id="code-buy" style="margin-left:auto">Buy passes</button></div>
   </div>
 </div>
 
@@ -194,19 +211,70 @@ function notice(text) {
   clearTimeout(noticeTimer); noticeTimer = setTimeout(() => el.classList.remove('on'), 6000);
 }
 
-// ---------- passes (kept on this device) ----------
-function loadPasses() { try { return JSON.parse(localStorage.getItem('oneroom.passes') || '[]'); } catch (e) { return []; } }
-function savePasses(p) { try { localStorage.setItem('oneroom.passes', JSON.stringify(p)); } catch (e) {} renderWallet(); }
-function usePasses(n) { const p = loadPasses(); if (p.length < n) return false; savePasses(p.slice(n)); return true; }
-function renderWallet() {
-  const p = loadPasses();
-  $('#pass-count').textContent = p.length;
-  const list = $('#pass-list'); list.innerHTML = '';
-  if (!p.length) { const s = document.createElement('span'); s.className = 'muted'; s.textContent = 'No passes yet.'; list.append(s); }
-  p.forEach(code => { const s = document.createElement('span'); s.className = 'pass'; s.textContent = code; list.append(s); });
-  if (S.phase === 'setup') updateCost();
+// ---------- pass codes ----------
+// A code is PASS-<serial>-<stamp>. The stamp proves we issued it.
+// Demo only: the real service checks stamps and used codes on its server.
+const STAMP_SECRET = 'keyless-demo-stamp-2026';
+function stamp(serial) {
+  let h = 2166136261;
+  for (const ch of STAMP_SECRET + serial) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  let out = '';
+  for (let i = 0; i < 4; i++) { out += CODE_CHARS[h % 32]; h = Math.floor(h / 32); }
+  return out;
 }
-function openWallet() { renderWallet(); $('#wallet-modal').classList.add('on'); }
+function makeCode() { const serial = randCode(4) + '-' + randCode(4); return `PASS-${serial}-${stamp(serial)}`; }
+function loadUsed() { try { return new Set(JSON.parse(localStorage.getItem('oneroom.used') || '[]')); } catch (e) { return new Set(); } }
+function markUsed(serials) {
+  const used = loadUsed(); serials.forEach(s => used.add(s));
+  try { localStorage.setItem('oneroom.used', JSON.stringify([...used])); } catch (e) {}
+}
+// Returns { serials } for `need` valid unused codes, or { error }.
+function checkCodes(text, need) {
+  const codes = [...new Set(text.toUpperCase().match(/PASS-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}/g) || [])];
+  const used = loadUsed(), good = [];
+  let fake = 0, spent = 0;
+  for (const c of codes) {
+    const serial = c.slice(5, 14);
+    if (stamp(serial) !== c.slice(15)) fake++;
+    else if (used.has(serial)) spent++;
+    else good.push(serial);
+  }
+  if (good.length >= need) return { serials: good.slice(0, need) };
+  const parts = [`Needs ${need} valid code${need > 1 ? 's' : ''}, found ${good.length}.`];
+  if (fake) parts.push(`${fake} not a real code.`);
+  if (spent) parts.push(`${spent} already used.`);
+  return { error: parts.join(' ') };
+}
+// Opens the code box; resolves with the serials used, or null if cancelled.
+let pending = null; // { need, resolve }
+function askCodes(need, help) {
+  if (pending) finishCodes(null);
+  $('#code-title').textContent = `Enter ${need} pass code${need > 1 ? 's' : ''}`;
+  $('#code-help').textContent = help;
+  $('#code-input').value = ''; $('#code-error').textContent = '';
+  $('#code-modal').classList.add('on');
+  $('#code-input').focus();
+  return new Promise(resolve => { pending = { need, resolve }; });
+}
+function finishCodes(result) {
+  const p = pending; pending = null;
+  $('#code-modal').classList.remove('on');
+  if (p) p.resolve(result);
+}
+function submitCodes() {
+  if (!pending) return;
+  const r = checkCodes($('#code-input').value, pending.need);
+  if (r.error) { $('#code-error').textContent = r.error; return; }
+  markUsed(r.serials);
+  finishCodes(r.serials);
+}
+function cancelCodes() { finishCodes(null); }
+function buy(minutes) {
+  const codes = Array.from({ length: minutes / 10 }, makeCode);
+  $('#bought-codes').textContent = codes.join('\n');
+  $('#bought').hidden = false;
+}
+function closeBuy() { $('#bought-codes').textContent = ''; $('#bought').hidden = true; $('#buy-modal').classList.remove('on'); }
 
 // ---------- connecting ----------
 function startPeer() {
@@ -286,7 +354,7 @@ function onData(d) {
       if (S.phase === 'waiting') { $('#setup-name').textContent = S.peerName; show('setup'); updateCost(); }
       break;
     case 'room':
-      if (S.role === 'guest' && S.phase === 'settingup' && okMs(d.ms)) openRoom(d.ms);
+      if (S.role === 'guest' && S.phase === 'settingup' && okMs(d.ms)) { markUsed(cleanSerials(d.used)); openRoom(d.ms); }
       break;
     case 'msg':
       if (S.phase === 'room') addMsg(false, String(d.text).slice(0, 4000));
@@ -295,7 +363,7 @@ function onData(d) {
       if (S.phase === 'room') receiveFile(d);
       break;
     case 'extend':
-      if (S.phase === 'room' && okMs(d.ms)) { S.endsAt += d.ms; addSys(S.peerName + ' added 10 minutes.'); }
+      if (S.phase === 'room' && okMs(d.ms)) { markUsed(cleanSerials(d.used)); S.endsAt += d.ms; addSys(`${S.peerName} added ${d.ms / MIN} minutes.`); }
       break;
     case 'sync':
       if (S.phase === 'room' && S.role === 'guest' && typeof d.remaining === 'number') S.endsAt = Date.now() + d.remaining;
@@ -308,14 +376,17 @@ function onData(d) {
 
 // ---------- room ----------
 function selectedMinutes() { return Number(document.querySelector('input[name=dur]:checked').value); }
+function cleanSerials(list) { return Array.isArray(list) ? list.filter(s => /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(s)).slice(0, 50) : []; }
 function updateCost() {
-  const need = selectedMinutes() / 10, have = loadPasses().length;
-  $('#setup-cost').textContent = `Uses ${need} pass${need > 1 ? 'es' : ''}. You have ${have}.`;
+  const need = selectedMinutes() / 10;
+  $('#setup-cost').textContent = `Needs ${need} pass code${need > 1 ? 's' : ''}.`;
 }
-function createRoom() {
+async function createRoom() {
   const minutes = selectedMinutes();
-  if (!usePasses(minutes / 10)) { notice('Not enough passes. Get more in your wallet.'); openWallet(); return; }
-  S.conn.send({ t: 'room', ms: minutes * MIN });
+  const serials = await askCodes(minutes / 10, `A ${minutes}-minute room.`);
+  if (!serials) return;
+  if (!S.conn || S.phase !== 'setup') return notice('The other person left before the room opened.');
+  S.conn.send({ t: 'room', ms: minutes * MIN, used: serials });
   openRoom(minutes * MIN);
 }
 function openRoom(ms) {
@@ -337,6 +408,7 @@ function tick() {
 }
 function endRoom(reason, closeDelay = 0) {
   if (S.phase !== 'room') return;
+  if (pending) finishCodes(null);
   clearInterval(S.timer); clearInterval(S.sync);
   const c = S.conn; S.conn = null;
   if (c) setTimeout(() => { try { c.close(); } catch (e) {} }, closeDelay);
@@ -350,11 +422,14 @@ function leaveRoom() {
   try { S.conn.send({ t: 'leave' }); } catch (e) {}
   endRoom('You left.', 400);
 }
-function extend() {
-  if (!usePasses(1)) { notice('No passes left. Get more in your wallet.'); openWallet(); return false; }
-  S.endsAt += PASS_MS;
-  S.conn.send({ t: 'extend', ms: PASS_MS });
-  addSys('You added 10 minutes.');
+// Adds 10 minutes per code. Returns true if the room was extended.
+async function extend(need = 1, help = 'Each code adds 10 minutes.') {
+  const serials = await askCodes(need, help);
+  if (!serials || !S.conn || S.phase !== 'room') return false;
+  const ms = serials.length * PASS_MS;
+  S.endsAt += ms;
+  S.conn.send({ t: 'extend', ms, used: serials });
+  addSys(`You added ${ms / MIN} minutes.`);
   return true;
 }
 
@@ -395,9 +470,8 @@ async function sendFile(file) {
   const rem = S.endsAt - Date.now();
   if (costMs >= rem) {
     const need = Math.ceil((costMs - rem + 30 * 1000) / PASS_MS);
-    if (!confirm(`This ${kind} (${mb(file.size)}) uses ${costMin} min, but the room has only ${fmt(rem)} left.\n\nExtend by ${need * 10} min (${need} pass${need > 1 ? 'es' : ''})?`)) return;
-    if (loadPasses().length < need) { notice('Not enough passes. Get more in your wallet.'); openWallet(); return; }
-    for (let i = 0; i < need; i++) extend();
+    if (!confirm(`This ${kind} (${mb(file.size)}) uses ${costMin} min, but the room has only ${fmt(rem)} left.\n\nExtend by ${need * 10} min (${need} pass code${need > 1 ? 's' : ''})?`)) return;
+    if (!await extend(need, `To send this ${kind}, the room needs ${need * 10} more minutes.`)) return;
   } else if (!confirm(`This ${kind} (${mb(file.size)}) uses ${costMin} min of room time.\n\nSend it?`)) return;
   const data = await file.arrayBuffer();
   if (!S.conn || S.phase !== 'room') return;
@@ -414,13 +488,16 @@ function receiveFile(d) {
 }
 
 // ---------- wiring ----------
-$('#wallet-btn').onclick = openWallet;
-$('#wallet-close').onclick = () => $('#wallet-modal').classList.remove('on');
-document.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => {
-  const p = loadPasses();
-  for (let i = 0; i < Number(b.dataset.buy) / 10; i++) p.push('PASS-' + randCode(4) + '-' + randCode(4));
-  savePasses(p);
-});
+$('#buy-btn').onclick = () => $('#buy-modal').classList.add('on');
+$('#buy-close').onclick = closeBuy;
+document.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => buy(Number(b.dataset.buy)));
+$('#copy-codes').onclick = async () => {
+  try { await navigator.clipboard.writeText($('#bought-codes').textContent); notice('Codes copied. Keep them somewhere safe.'); }
+  catch (e) { notice('Copy didn’t work here. Select the codes and copy them by hand.'); }
+};
+$('#code-ok').onclick = submitCodes;
+$('#code-cancel').onclick = cancelCodes;
+$('#code-buy').onclick = () => $('#buy-modal').classList.add('on');
 $('#copy-btn').onclick = async () => {
   try { await navigator.clipboard.writeText(`ID: ${S.myId}\nCode: ${S.myCode}`); notice('Copied. Send it to the person you want to talk to.'); }
   catch (e) { notice('Copy didn’t work here. Read the ID and code out loud instead.'); }
@@ -432,7 +509,7 @@ $('#accept-btn').onclick = accept;
 $('#decline-btn').onclick = decline;
 document.querySelectorAll('input[name=dur]').forEach(r => r.onchange = updateCost);
 $('#create-btn').onclick = createRoom;
-$('#extend-btn').onclick = extend;
+$('#extend-btn').onclick = () => extend();
 $('#leave-btn').onclick = leaveRoom;
 $('#send-btn').onclick = sendText;
 $('#msg-input').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) sendText(); };
@@ -441,7 +518,6 @@ $('#file-input').onchange = e => { sendFile(e.target.files[0]); e.target.value =
 $('#back-btn').onclick = () => show('home');
 window.addEventListener('beforeunload', () => { if (S.conn && S.phase === 'room') try { S.conn.send({ t: 'leave' }); } catch (e) {} });
 
-renderWallet();
 startPeer();
 </script>
 </body>
