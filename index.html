@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OneRoom by Keyless</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+:root{--ink:#12151C;--sub:#4A505C;--bg:#F4F2EE;--card:#FBFAF7;--line:#E2DED6;--accent:#1F6F5C;--accent-light:#5FB39C;--warn:#B4561F}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 'IBM Plex Sans',system-ui,sans-serif}
+header{display:flex;align-items:center;gap:10px;padding:14px 16px;background:var(--ink);color:var(--bg)}
+header .brand{font-family:Sora,sans-serif;font-weight:700;font-size:18px}
+header .spacer{flex:1}
+main{max-width:560px;margin:0 auto;padding:20px 16px 40px}
+h1,h2{font-family:Sora,sans-serif;letter-spacing:-.02em;margin:0 0 8px}
+h1{font-size:26px}h2{font-size:20px}
+p{margin:0 0 12px}
+.muted{color:var(--sub);font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}
+.dark{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.dark .muted{color:#A9AFBA}
+.id{font-family:Sora,sans-serif;font-weight:700;font-size:24px;color:var(--accent-light);word-break:break-all}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+input[type=text]{font:inherit;width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+button{font:inherit;font-weight:600;min-height:44px;padding:10px 16px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.ghost{background:transparent;color:var(--warn);border-color:var(--warn)}
+.dark button{background:transparent;color:var(--bg);border-color:#3A3F4A}
+button.small{min-height:36px;padding:6px 12px;font-size:14px}
+button:disabled{opacity:.5;cursor:default}
+.pill{background:#2A2F39;color:var(--bg);border:none}
+.screen{display:none}.screen.on{display:block}
+.notice{display:none;margin-bottom:14px;padding:12px 14px;border-radius:10px;background:#FBEEE4;color:#7A3A12;font-size:15px}
+.notice.on{display:block}
+.choices{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+.choices label{display:block;text-align:center;padding:10px 4px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer}
+.choices input{position:absolute;opacity:0}
+.choices input:checked+span{color:var(--accent);font-weight:700}
+.choices label:has(input:checked){border-color:var(--accent);border-width:2px}
+.roomhead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.timer{font-family:Sora,sans-serif;font-weight:700;font-size:28px;font-variant-numeric:tabular-nums}
+.timer.low{color:var(--warn)}
+#messages{height:52vh;min-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:12px;background:#fff;border:1px solid var(--line);border-radius:14px;margin-bottom:10px}
+.msg{max-width:80%;padding:8px 12px;border-radius:14px;background:#EFEDE8;word-break:break-word;white-space:pre-wrap}
+.msg.me{align-self:flex-end;background:var(--accent);color:#fff}
+.msg img{display:block;max-width:100%;border-radius:10px}
+.msg a{color:inherit}
+.msg small{display:block;opacity:.75;font-size:12px;margin-top:4px}
+.sys{align-self:center;font-size:13px;color:var(--sub);text-align:center}
+.modal{display:none;position:fixed;inset:0;background:rgba(18,21,28,.6);align-items:center;justify-content:center;padding:16px}
+.modal.on{display:flex}
+.modal .card{max-width:420px;width:100%;margin:0}
+.passes{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0;max-height:140px;overflow-y:auto}
+.pass{font-family:ui-monospace,Menlo,monospace;font-size:12px;border:1px dashed var(--accent);color:var(--accent);padding:2px 6px;border-radius:6px}
+footer{max-width:560px;margin:0 auto;padding:0 16px 32px;color:var(--sub);font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <svg width="30" height="30" viewBox="0 0 120 120" aria-hidden="true"><path d="M88 108H32a20 20 0 0 1-20-20V32a20 20 0 0 1 20-20h56a20 20 0 0 1 20 20v40" fill="none" stroke="#F4F2EE" stroke-width="8" stroke-linecap="round"/><circle cx="46" cy="60" r="10" fill="#F4F2EE"/><circle cx="74" cy="60" r="10" fill="#5FB39C"/></svg>
+  <span class="brand">OneRoom</span>
+  <span class="spacer"></span>
+  <button class="pill small" id="wallet-btn">Passes: <span id="pass-count">0</span></button>
+</header>
+
+<main>
+  <div class="notice" id="notice" role="status"></div>
+
+  <section class="screen on" id="screen-connecting">
+    <div class="card"><h2>Getting your ID…</h2><p class="muted">Connecting to the network. This takes a few seconds.</p></div>
+  </section>
+
+  <section class="screen" id="screen-home">
+    <div class="card dark">
+      <p class="muted">Your ID for today</p>
+      <div class="id" id="my-id"></div>
+      <p class="muted" style="margin-top:10px">Your private code</p>
+      <div class="id" id="my-code"></div>
+      <div class="row" style="margin-top:14px">
+        <button class="small" id="copy-btn">Copy ID + code</button>
+        <button class="small" id="newid-btn">Get a new ID</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Open a room</h2>
+      <p class="muted">You need both their ID and their code.</p>
+      <label class="muted" for="to-id">Their ID</label>
+      <input type="text" id="to-id" placeholder="quiet-fox-4821" autocomplete="off" autocapitalize="off">
+      <label class="muted" for="to-code" style="display:block;margin-top:10px">Their code</label>
+      <input type="text" id="to-code" placeholder="ABC123" autocomplete="off" autocapitalize="characters">
+      <button class="primary" id="request-btn" style="width:100%;margin-top:14px">Send request</button>
+    </div>
+  </section>
+
+  <section class="screen" id="screen-waiting">
+    <div class="card"><h2>Waiting for <span id="waiting-name"></span>…</h2><p class="muted">They need to accept your request.</p><button id="cancel-btn">Cancel</button></div>
+  </section>
+
+  <section class="screen" id="screen-setup">
+    <div class="card">
+      <h2><span id="setup-name"></span> accepted!</h2>
+      <p class="muted">Choose how long the room stays open. 1 pass = 10 minutes.</p>
+      <div class="choices" id="durations">
+        <label><input type="radio" name="dur" value="10" checked><span>10 min</span></label>
+        <label><input type="radio" name="dur" value="20"><span>20 min</span></label>
+        <label><input type="radio" name="dur" value="30"><span>30 min</span></label>
+        <label><input type="radio" name="dur" value="60"><span>60 min</span></label>
+      </div>
+      <p id="setup-cost"></p>
+      <button class="primary" id="create-btn" style="width:100%">Open the room</button>
+    </div>
+  </section>
+
+  <section class="screen" id="screen-settingup">
+    <div class="card"><h2>Room accepted</h2><p class="muted"><span id="settingup-name"></span> is choosing the room time…</p></div>
+  </section>
+
+  <section class="screen" id="screen-room">
+    <div class="roomhead">
+      <div class="grow"><p class="muted" style="margin:0">Room with <b id="room-with"></b></p><div class="timer" id="timer">00:00</div></div>
+      <button class="small" id="extend-btn">+10 min</button>
+      <button class="small ghost" id="leave-btn">Leave</button>
+    </div>
+    <div id="messages" aria-live="polite"></div>
+    <div class="row">
+      <input type="text" id="msg-input" class="grow" placeholder="Message (text is free)" autocomplete="off">
+      <button class="small" id="attach-btn" aria-label="Send an image or file">+ File</button>
+      <button class="primary small" id="send-btn">Send</button>
+      <input type="file" id="file-input" hidden>
+    </div>
+    <p class="muted" style="margin-top:8px">Images and files use 1 min per 5 MB.</p>
+  </section>
+
+  <section class="screen" id="screen-gone">
+    <div class="card dark"><h2>The room is gone.</h2><p class="muted" id="gone-reason"></p><p>Nothing was saved, anywhere.</p><button id="back-btn">Back to start</button></div>
+  </section>
+</main>
+
+<footer>Demo: passes are free here and stay on this device. Messages and files travel directly between the two browsers.</footer>
+
+<div class="modal" id="incoming-modal" role="dialog" aria-modal="true" aria-labelledby="incoming-title">
+  <div class="card">
+    <h2 id="incoming-title"><span id="incoming-name"></span> wants to open a room</h2>
+    <p class="muted">They used your ID and your code.</p>
+    <div class="row"><button class="primary" id="accept-btn">Accept</button><button id="decline-btn">Decline</button></div>
+  </div>
+</div>
+
+<div class="modal" id="wallet-modal" role="dialog" aria-modal="true" aria-labelledby="wallet-title">
+  <div class="card">
+    <h2 id="wallet-title">My passes</h2>
+    <p class="muted">Stored on this device only. They stay when you leave.</p>
+    <div class="passes" id="pass-list"></div>
+    <p class="muted">Demo purchase (no real payment):</p>
+    <div class="row">
+      <button class="small" data-buy="10">10 min · ₩1,000</button>
+      <button class="small" data-buy="30">30 min · ₩2,500</button>
+      <button class="small" data-buy="60">60 min · ₩4,000</button>
+    </div>
+    <button style="width:100%;margin-top:14px" id="wallet-close">Close</button>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const ADJ = ['quiet','blue','tiny','calm','warm','slow','swift','silver','misty','brave','gentle','lucky'];
+const ANIMALS = ['fox','whale','otter','wolf','rabbit','owl','deer','penguin','sparrow','panda','lynx','seal'];
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const PREFIX = 'keyless-oneroom-';
+const MIN = 60 * 1000, PASS_MS = 10 * MIN, MB5 = 5 * 1024 * 1024, MAX_FILE = 25 * 1024 * 1024;
+
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const randCode = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => CODE_CHARS[b % CODE_CHARS.length]).join('');
+const fmt = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
+const mb = n => (n / 1024 / 1024).toFixed(1) + ' MB';
+
+const S = { peer: null, myId: '', myCode: '', conn: null, role: '', peerName: '', phase: 'connecting', endsAt: 0, timer: null, sync: null, urls: [] };
+
+// ---------- screens & notices ----------
+function show(phase) {
+  S.phase = phase;
+  document.querySelectorAll('.screen').forEach(el => el.classList.toggle('on', el.id === 'screen-' + phase));
+  $('#incoming-modal').classList.toggle('on', phase === 'incoming');
+  if (phase === 'incoming') $('#screen-home').classList.add('on');
+}
+let noticeTimer;
+function notice(text) {
+  const el = $('#notice');
+  el.textContent = text; el.classList.add('on');
+  clearTimeout(noticeTimer); noticeTimer = setTimeout(() => el.classList.remove('on'), 6000);
+}
+
+// ---------- passes (kept on this device) ----------
+function loadPasses() { try { return JSON.parse(localStorage.getItem('oneroom.passes') || '[]'); } catch (e) { return []; } }
+function savePasses(p) { try { localStorage.setItem('oneroom.passes', JSON.stringify(p)); } catch (e) {} renderWallet(); }
+function usePasses(n) { const p = loadPasses(); if (p.length < n) return false; savePasses(p.slice(n)); return true; }
+function renderWallet() {
+  const p = loadPasses();
+  $('#pass-count').textContent = p.length;
+  const list = $('#pass-list'); list.innerHTML = '';
+  if (!p.length) { const s = document.createElement('span'); s.className = 'muted'; s.textContent = 'No passes yet.'; list.append(s); }
+  p.forEach(code => { const s = document.createElement('span'); s.className = 'pass'; s.textContent = code; list.append(s); });
+  if (S.phase === 'setup') updateCost();
+}
+function openWallet() { renderWallet(); $('#wallet-modal').classList.add('on'); }
+
+// ---------- connecting ----------
+function startPeer() {
+  show('connecting');
+  S.myId = `${pick(ADJ)}-${pick(ANIMALS)}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
+  S.myCode = randCode(6);
+  const peer = new Peer(PREFIX + S.myId);
+  S.peer = peer;
+  peer.on('open', () => { $('#my-id').textContent = S.myId; $('#my-code').textContent = S.myCode; show('home'); });
+  peer.on('connection', onIncoming);
+  peer.on('disconnected', () => { if (!peer.destroyed) peer.reconnect(); });
+  peer.on('error', err => {
+    if (peer !== S.peer) return;
+    if (err.type === 'unavailable-id') { peer.destroy(); startPeer(); return; }
+    if (err.type === 'peer-unavailable') {
+      if (S.phase === 'waiting') { S.conn = null; show('home'); }
+      notice('No one with that ID is online right now.');
+      return;
+    }
+    notice('Connection problem (' + err.type + '). Try “Get a new ID” or another network.');
+  });
+}
+function newId() {
+  if (S.peer) S.peer.destroy();
+  startPeer();
+}
+
+// ---------- requests ----------
+function sendRequest() {
+  const id = $('#to-id').value.trim().toLowerCase();
+  const code = $('#to-code').value.trim().toUpperCase();
+  if (!id || !code) return notice('Enter both their ID and their code.');
+  if (id === S.myId) return notice('That’s your own ID.');
+  const conn = S.peer.connect(PREFIX + id, { metadata: { code, from: S.myId }, reliable: true });
+  S.conn = conn; S.role = 'host'; S.peerName = id;
+  wire(conn);
+  $('#waiting-name').textContent = id;
+  show('waiting');
+}
+function onIncoming(conn) {
+  conn.on('open', () => {
+    const md = conn.metadata || {};
+    const refuse = reason => { conn.send({ t: 'reject', reason }); setTimeout(() => conn.close(), 400); };
+    if (S.phase !== 'home') return refuse('busy');
+    if (md.code !== S.myCode) return refuse('code');
+    S.conn = conn; S.role = 'guest'; S.peerName = String(md.from || 'someone').slice(0, 40);
+    wire(conn);
+    $('#incoming-name').textContent = S.peerName;
+    show('incoming');
+  });
+}
+function wire(conn) {
+  conn.on('data', d => { if (conn === S.conn) onData(d); });
+  conn.on('close', () => onClose(conn));
+}
+function dropConn() { const c = S.conn; S.conn = null; if (c) try { c.close(); } catch (e) {} }
+function accept() { S.conn.send({ t: 'accept' }); $('#settingup-name').textContent = S.peerName; show('settingup'); }
+function decline() { S.conn.send({ t: 'reject', reason: 'declined' }); const c = S.conn; S.conn = null; setTimeout(() => c.close(), 400); show('home'); }
+function cancelRequest() { dropConn(); show('home'); }
+
+function onClose(conn) {
+  if (conn !== S.conn) return;
+  S.conn = null;
+  if (S.phase === 'room') endRoom('The connection was lost.');
+  else if (['waiting', 'incoming', 'setup', 'settingup'].includes(S.phase)) { show('home'); notice('The other person left.'); }
+}
+
+function onData(d) {
+  if (!d || typeof d !== 'object') return;
+  const okMs = v => typeof v === 'number' && v > 0 && v <= 3 * 60 * MIN;
+  switch (d.t) {
+    case 'reject': {
+      const msg = { code: 'Wrong ID or code.', busy: 'They’re busy right now.', declined: 'They declined your request.' }[d.reason] || 'Request rejected.';
+      S.conn = null; show('home'); notice(msg); break;
+    }
+    case 'accept':
+      if (S.phase === 'waiting') { $('#setup-name').textContent = S.peerName; show('setup'); updateCost(); }
+      break;
+    case 'room':
+      if (S.role === 'guest' && S.phase === 'settingup' && okMs(d.ms)) openRoom(d.ms);
+      break;
+    case 'msg':
+      if (S.phase === 'room') addMsg(false, String(d.text).slice(0, 4000));
+      break;
+    case 'file':
+      if (S.phase === 'room') receiveFile(d);
+      break;
+    case 'extend':
+      if (S.phase === 'room' && okMs(d.ms)) { S.endsAt += d.ms; addSys(S.peerName + ' added 10 minutes.'); }
+      break;
+    case 'sync':
+      if (S.phase === 'room' && S.role === 'guest' && typeof d.remaining === 'number') S.endsAt = Date.now() + d.remaining;
+      break;
+    case 'leave':
+      if (S.phase === 'room') endRoom('The other person left.');
+      break;
+  }
+}
+
+// ---------- room ----------
+function selectedMinutes() { return Number(document.querySelector('input[name=dur]:checked').value); }
+function updateCost() {
+  const need = selectedMinutes() / 10, have = loadPasses().length;
+  $('#setup-cost').textContent = `Uses ${need} pass${need > 1 ? 'es' : ''}. You have ${have}.`;
+}
+function createRoom() {
+  const minutes = selectedMinutes();
+  if (!usePasses(minutes / 10)) { notice('Not enough passes. Get more in your wallet.'); openWallet(); return; }
+  S.conn.send({ t: 'room', ms: minutes * MIN });
+  openRoom(minutes * MIN);
+}
+function openRoom(ms) {
+  S.endsAt = Date.now() + ms;
+  $('#messages').innerHTML = '';
+  $('#room-with').textContent = S.peerName;
+  show('room');
+  addSys('Room opened. Nothing here is saved.');
+  clearInterval(S.timer); S.timer = setInterval(tick, 250); tick();
+  clearInterval(S.sync);
+  if (S.role === 'host') S.sync = setInterval(() => { if (S.conn) S.conn.send({ t: 'sync', remaining: S.endsAt - Date.now() }); }, 5000);
+}
+function tick() {
+  const rem = S.endsAt - Date.now();
+  const el = $('#timer');
+  el.textContent = fmt(rem);
+  el.classList.toggle('low', rem < MIN);
+  if (rem <= 0) endRoom('Time’s up.');
+}
+function endRoom(reason, closeDelay = 0) {
+  if (S.phase !== 'room') return;
+  clearInterval(S.timer); clearInterval(S.sync);
+  const c = S.conn; S.conn = null;
+  if (c) setTimeout(() => { try { c.close(); } catch (e) {} }, closeDelay);
+  $('#messages').innerHTML = '';
+  S.urls.forEach(u => URL.revokeObjectURL(u)); S.urls = [];
+  $('#gone-reason').textContent = reason;
+  show('gone');
+}
+function leaveRoom() {
+  if (!confirm('Leave the room? It will be gone forever, for both of you.')) return;
+  try { S.conn.send({ t: 'leave' }); } catch (e) {}
+  endRoom('You left.', 400);
+}
+function extend() {
+  if (!usePasses(1)) { notice('No passes left. Get more in your wallet.'); openWallet(); return false; }
+  S.endsAt += PASS_MS;
+  S.conn.send({ t: 'extend', ms: PASS_MS });
+  addSys('You added 10 minutes.');
+  return true;
+}
+
+// ---------- messages & files ----------
+function bubble(mine) {
+  const el = document.createElement('div');
+  el.className = 'msg' + (mine ? ' me' : '');
+  $('#messages').append(el);
+  return el;
+}
+function scrollDown() { const m = $('#messages'); m.scrollTop = m.scrollHeight; }
+function addMsg(mine, text) { bubble(mine).textContent = text; scrollDown(); }
+function addSys(text) { const el = document.createElement('div'); el.className = 'sys'; el.textContent = text; $('#messages').append(el); scrollDown(); }
+function addFile(mine, blob, name, size, costMs) {
+  const el = bubble(mine);
+  const url = URL.createObjectURL(blob); S.urls.push(url);
+  if (blob.type.startsWith('image/')) {
+    const img = document.createElement('img'); img.src = url; img.alt = name; img.onload = scrollDown; el.append(img);
+  } else {
+    const a = document.createElement('a'); a.href = url; a.download = name; a.textContent = 'File: ' + name; el.append(a);
+  }
+  const note = document.createElement('small'); note.textContent = `${mb(size)} · −${costMs / MIN} min`; el.append(note);
+  scrollDown();
+}
+function sendText() {
+  const input = $('#msg-input');
+  const text = input.value.trim();
+  if (!text || !S.conn) return;
+  S.conn.send({ t: 'msg', text });
+  addMsg(true, text);
+  input.value = '';
+}
+async function sendFile(file) {
+  if (!file || !S.conn) return;
+  if (file.size > MAX_FILE) return notice('In this demo, files can be up to 25 MB.');
+  const kind = file.type.startsWith('image/') ? 'image' : 'file';
+  const costMin = Math.max(1, Math.ceil(file.size / MB5)), costMs = costMin * MIN;
+  const rem = S.endsAt - Date.now();
+  if (costMs >= rem) {
+    const need = Math.ceil((costMs - rem + 30 * 1000) / PASS_MS);
+    if (!confirm(`This ${kind} (${mb(file.size)}) uses ${costMin} min, but the room has only ${fmt(rem)} left.\n\nExtend by ${need * 10} min (${need} pass${need > 1 ? 'es' : ''})?`)) return;
+    if (loadPasses().length < need) { notice('Not enough passes. Get more in your wallet.'); openWallet(); return; }
+    for (let i = 0; i < need; i++) extend();
+  } else if (!confirm(`This ${kind} (${mb(file.size)}) uses ${costMin} min of room time.\n\nSend it?`)) return;
+  const data = await file.arrayBuffer();
+  if (!S.conn || S.phase !== 'room') return;
+  S.endsAt -= costMs;
+  S.conn.send({ t: 'file', name: file.name, mime: file.type || 'application/octet-stream', size: file.size, cost: costMs, data });
+  addFile(true, file, file.name, file.size, costMs);
+}
+function receiveFile(d) {
+  if (!d.data || typeof d.cost !== 'number' || d.cost < 0 || d.cost > 10 * MIN) return;
+  S.endsAt -= d.cost;
+  const mime = /^[\w.+-]+\/[\w.+-]+$/.test(d.mime) ? d.mime : 'application/octet-stream';
+  const name = String(d.name || 'file').slice(0, 120);
+  addFile(false, new Blob([d.data], { type: mime }), name, Number(d.size) || 0, d.cost);
+}
+
+// ---------- wiring ----------
+$('#wallet-btn').onclick = openWallet;
+$('#wallet-close').onclick = () => $('#wallet-modal').classList.remove('on');
+document.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => {
+  const p = loadPasses();
+  for (let i = 0; i < Number(b.dataset.buy) / 10; i++) p.push('PASS-' + randCode(4) + '-' + randCode(4));
+  savePasses(p);
+});
+$('#copy-btn').onclick = async () => {
+  try { await navigator.clipboard.writeText(`ID: ${S.myId}\nCode: ${S.myCode}`); notice('Copied. Send it to the person you want to talk to.'); }
+  catch (e) { notice('Copy didn’t work here. Read the ID and code out loud instead.'); }
+};
+$('#newid-btn').onclick = newId;
+$('#request-btn').onclick = sendRequest;
+$('#cancel-btn').onclick = cancelRequest;
+$('#accept-btn').onclick = accept;
+$('#decline-btn').onclick = decline;
+document.querySelectorAll('input[name=dur]').forEach(r => r.onchange = updateCost);
+$('#create-btn').onclick = createRoom;
+$('#extend-btn').onclick = extend;
+$('#leave-btn').onclick = leaveRoom;
+$('#send-btn').onclick = sendText;
+$('#msg-input').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) sendText(); };
+$('#attach-btn').onclick = () => $('#file-input').click();
+$('#file-input').onchange = e => { sendFile(e.target.files[0]); e.target.value = ''; };
+$('#back-btn').onclick = () => show('home');
+window.addEventListener('beforeunload', () => { if (S.conn && S.phase === 'room') try { S.conn.send({ t: 'leave' }); } catch (e) {} });
+
+renderWallet();
+startPeer();
+</script>
+</body>
+</html>
