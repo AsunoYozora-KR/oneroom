@@ -14,6 +14,9 @@ body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 'IBM Plex Sans
 header{display:flex;align-items:center;gap:10px;padding:14px 16px;background:var(--ink);color:var(--bg)}
 header .brand{font-family:Sora,sans-serif;font-weight:700;font-size:18px}
 header .spacer{flex:1}
+.status{font-size:13px;color:#A9AFBA}
+.status::before{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:#B4561F;margin-right:6px;vertical-align:1px}
+.status.ok::before{background:#5FB39C}
 main{max-width:560px;margin:0 auto;padding:20px 16px 40px}
 h1,h2{font-family:Sora,sans-serif;letter-spacing:-.02em;margin:0 0 8px}
 h1{font-size:26px}h2{font-size:20px}
@@ -66,6 +69,7 @@ footer{max-width:560px;margin:0 auto;padding:0 16px 32px;color:var(--sub);font-s
   <svg width="30" height="30" viewBox="0 0 120 120" aria-hidden="true"><path d="M88 108H32a20 20 0 0 1-20-20V32a20 20 0 0 1 20-20h56a20 20 0 0 1 20 20v40" fill="none" stroke="#F4F2EE" stroke-width="8" stroke-linecap="round"/><circle cx="46" cy="60" r="10" fill="#F4F2EE"/><circle cx="74" cy="60" r="10" fill="#5FB39C"/></svg>
   <span class="brand">OneRoom</span>
   <span class="spacer"></span>
+  <span class="status" id="net-status" role="status">Connecting…</span>
   <button class="pill small" id="buy-btn">Buy passes</button>
 </header>
 
@@ -277,25 +281,51 @@ function buy(minutes) {
 function closeBuy() { $('#bought-codes').textContent = ''; $('#bought').hidden = true; $('#buy-modal').classList.remove('on'); }
 
 // ---------- connecting ----------
-function startPeer() {
-  show('connecting');
-  S.myId = `${pick(ADJ)}-${pick(ANIMALS)}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
-  S.myCode = randCode(6);
+function setStatus(ok, text) { const el = $('#net-status'); el.textContent = text; el.classList.toggle('ok', ok); }
+
+// keepId: reuse the same ID (e.g. after the phone was in the background).
+function startPeer(keepId) {
+  if (!keepId) { show('connecting'); S.myId = `${pick(ADJ)}-${pick(ANIMALS)}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`; S.myCode = randCode(6); }
+  setStatus(false, 'Connecting…');
   const peer = new Peer(PREFIX + S.myId);
   S.peer = peer;
-  peer.on('open', () => { $('#my-id').textContent = S.myId; $('#my-code').textContent = S.myCode; show('home'); });
+  peer.on('open', () => {
+    setStatus(true, 'Online');
+    $('#my-id').textContent = S.myId; $('#my-code').textContent = S.myCode;
+    if (S.phase === 'connecting') show('home');
+  });
   peer.on('connection', onIncoming);
-  peer.on('disconnected', () => { if (!peer.destroyed) peer.reconnect(); });
+  peer.on('disconnected', () => {
+    if (peer !== S.peer || peer.destroyed) return;
+    setStatus(false, 'Reconnecting…');
+    peer.reconnect();
+  });
+  peer.on('close', () => { if (peer === S.peer) setStatus(false, 'Offline'); });
   peer.on('error', err => {
     if (peer !== S.peer) return;
-    if (err.type === 'unavailable-id') { peer.destroy(); startPeer(); return; }
+    if (err.type === 'unavailable-id') {
+      peer.destroy();
+      if (keepId) notice('Your old ID was taken while you were away, so you have a new one. Share it again.');
+      startPeer(); return;
+    }
     if (err.type === 'peer-unavailable') {
-      if (S.phase === 'waiting') { S.conn = null; show('home'); }
-      notice('No one with that ID is online right now.');
+      if (S.phase === 'waiting') { clearTimeout(S.waitTimer); S.conn = null; show('home'); }
+      notice('Can’t find that ID right now. Ask them to keep OneRoom open on screen (not in the background), then try again.');
       return;
     }
-    notice('Connection problem (' + err.type + '). Try “Get a new ID” or another network.');
+    if (['network', 'server-error', 'socket-error', 'socket-closed'].includes(err.type)) {
+      setStatus(false, 'Offline');
+      notice('Can’t reach the connection server. Check the internet, then reload the page.');
+      return;
+    }
+    notice('Connection problem (' + err.type + ').');
   });
+}
+// Phones pause pages in the background. When we come back, get the same ID online again.
+function wakeUp() {
+  if (document.visibilityState !== 'visible' || !S.peer || !S.myId) return;
+  if (S.peer.destroyed) startPeer(true);
+  else if (S.peer.disconnected) { setStatus(false, 'Reconnecting…'); S.peer.reconnect(); }
 }
 function newId() {
   if (S.peer) S.peer.destroy();
@@ -308,12 +338,21 @@ function sendRequest() {
   const code = $('#to-code').value.trim().toUpperCase();
   if (!id || !code) return notice('Enter both their ID and their code.');
   if (id === S.myId) return notice('That’s your own ID.');
+  if (!S.peer || S.peer.disconnected) return notice('You’re offline right now. Wait for “Online” at the top, then try again.');
   const conn = S.peer.connect(PREFIX + id, { metadata: { code, from: S.myId }, reliable: true });
   S.conn = conn; S.role = 'host'; S.peerName = id;
   wire(conn);
+  // If the direct link never opens, don't leave the person waiting forever.
+  clearTimeout(S.waitTimer);
+  S.waitTimer = setTimeout(() => {
+    if (S.conn !== conn || conn.open) return;
+    dropConn(); show('home');
+    notice(DIRECT_FAIL);
+  }, 20000);
   $('#waiting-name').textContent = id;
   show('waiting');
 }
+const DIRECT_FAIL = 'Couldn’t connect directly. This network may block device-to-device links (common on school and office Wi-Fi). Try again, or put both devices on a phone hotspot.';
 function onIncoming(conn) {
   conn.on('open', () => {
     const md = conn.metadata || {};
@@ -327,10 +366,19 @@ function onIncoming(conn) {
   });
 }
 function wire(conn) {
+  conn.on('open', () => { if (conn === S.conn) clearTimeout(S.waitTimer); });
   conn.on('data', d => { if (conn === S.conn) onData(d); });
+  conn.on('error', err => {
+    if (conn !== S.conn || err.type !== 'negotiation-failed') return;
+    // The two devices couldn't reach each other directly.
+    clearTimeout(S.waitTimer);
+    S.conn = null;
+    if (S.phase === 'room') endRoom('The connection was lost.');
+    else { show('home'); notice(DIRECT_FAIL); }
+  });
   conn.on('close', () => onClose(conn));
 }
-function dropConn() { const c = S.conn; S.conn = null; if (c) try { c.close(); } catch (e) {} }
+function dropConn() { clearTimeout(S.waitTimer); const c = S.conn; S.conn = null; if (c) try { c.close(); } catch (e) {} }
 function accept() { S.conn.send({ t: 'accept' }); $('#settingup-name').textContent = S.peerName; show('settingup'); }
 function decline() { S.conn.send({ t: 'reject', reason: 'declined' }); const c = S.conn; S.conn = null; setTimeout(() => c.close(), 400); show('home'); }
 function cancelRequest() { dropConn(); show('home'); }
@@ -338,8 +386,10 @@ function cancelRequest() { dropConn(); show('home'); }
 function onClose(conn) {
   if (conn !== S.conn) return;
   S.conn = null;
+  clearTimeout(S.waitTimer);
   if (S.phase === 'room') endRoom('The connection was lost.');
-  else if (['waiting', 'incoming', 'setup', 'settingup'].includes(S.phase)) { show('home'); notice('The other person left.'); }
+  else if (S.phase === 'waiting') { show('home'); notice(DIRECT_FAIL); }
+  else if (['incoming', 'setup', 'settingup'].includes(S.phase)) { show('home'); notice('The other person left.'); }
 }
 
 function onData(d) {
@@ -516,6 +566,7 @@ $('#msg-input').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) send
 $('#attach-btn').onclick = () => $('#file-input').click();
 $('#file-input').onchange = e => { sendFile(e.target.files[0]); e.target.value = ''; };
 $('#back-btn').onclick = () => show('home');
+document.addEventListener('visibilitychange', wakeUp);
 window.addEventListener('beforeunload', () => { if (S.conn && S.phase === 'room') try { S.conn.send({ t: 'leave' }); } catch (e) {} });
 
 startPeer();
